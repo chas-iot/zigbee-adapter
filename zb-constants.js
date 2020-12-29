@@ -109,11 +109,35 @@ const MAC_STATUS = {
 addInverseMap(MAC_STATUS);
 /* eslint-enable max-len */
 
+// the following came from the ZigBee Specification, section 2.4.5
+// eslint-disable-next-line max-len
+// https://zigbeealliance.org/wp-content/uploads/2019/11/docs-05-3474-21-0csg-zigbee-specification.pdf
+
+const ZDP_STATUS = {
+  0x00: 'ZDP_SUCCESS',
+  0x80: 'ZDP_INV_REQUESTTYPE',
+  0x81: 'ZDP_DEVICE_NOT_FOUND',
+  0x82: 'ZDP_INVALID_EP',
+  0x83: 'ZDP_NOT_ACTIVE',
+  0x84: 'ZDP_NOT_SUPPORTED',
+  0x85: 'ZDP_TIMEOUT',
+  0x86: 'ZDP_NO_MATCH',
+  0x88: 'ZDP_NO_ENTRY',
+  0x89: 'ZDP_NO_DESCRIPTOR',
+  0x8a: 'ZDP_INSUFFICIENT_SPACE',
+  0x8b: 'ZDP_NOT_PERMITTED',
+  0x8c: 'ZDP_TABLE_FULL',
+  0x8d: 'ZDP_NOT_AUTHORIZED',
+  0x8e: 'ZDP_DEVICE_BINDING_TABLE_FULL',
+};
+addInverseMap(ZDP_STATUS);
+
 const BROADCAST_ADDR = {
   ALL: 'ffff',
   NON_SLEEPING: 'fffd', // i.e. rxOnWhenIdle = true
   ROUTERS: 'fffc',
   LOW_POWER_ROUTERS: 'fffb',
+  includes: (v) => Object.values(BROADCAST_ADDR).includes(v),
 };
 
 const UNKNOWN_ADDR_16 = 'fffe';
@@ -426,6 +450,7 @@ module.exports = {
   THERMOSTAT_SYSTEM_MODE,
   THERMOSTAT_STATE,
   UNKNOWN_ADDR_16,
+  ZDP_STATUS,
   ZHA_DEVICE_ID,
   ZLL_DEVICE_ID,
   ZONE_STATUS,

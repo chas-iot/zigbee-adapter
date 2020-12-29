@@ -26,6 +26,7 @@ const {
   CLUSTER_ID,
   PROFILE_ID,
   STATUS,
+  ZDP_STATUS,
 } = require('./zb-constants');
 
 const {
@@ -1690,6 +1691,134 @@ class ZigbeeAdapter extends Adapter {
       new Command(RESOLVE_SET_PROPERTY, property),
     ]);
   }
+
+
+  // network/ieee address requests
+
+  handleIEEAddressRequest(frame) {
+    // The IEEE Address Request and Netork Address Request have
+    // a similar format and similar processing.
+    this.handleNetworkAddressRequest(frame, true);
+  }
+
+  handleNetworkAddressRequest(frame, isIEEE) {
+    /* eslint-disable indent */
+// some temporary debugging lines
+frame.clusterIdName = zdo.CLUSTER_ID[parseInt(frame.clusterId, 16)];
+console.debug('zb-adapter.js - handle_X_NetworkAddress - isIEEE:', !!isIEEE);
+console.debug('request:', JSON.stringify(frame, null, 2));
+    /* eslint-enable indent */
+
+    let node = null;
+    if (frame.addr64) {
+      node = this.nodes[frame.addr64];
+    } else if (frame.addr16) {
+      node = this.findNodeByAddr16(frame.addr16);
+    }
+
+    if (frame.destination16 &&
+        BROADCAST_ADDR.includes(frame.destination16) &&
+        !node) {
+      // nothing to do
+      return;
+    }
+
+    const response = {
+      status: -1, // poisoned with invalid value
+      response: true,
+      clusterId: isIEEE ?
+        zdo.CLUSTER_ID.IEEE_ADDRESS_RESPONSE :
+        zdo.CLUSTER_ID.NETWORK_ADDRESS_RESPONSE,
+    };
+    if (frame.remote64) {
+      response.destination64 = frame.remote64;
+    }
+    if (frame.remote16) {
+      response.destination16 = frame.remote16;
+    }
+    if (frame.sourceEndpoint) {
+      response.destinationEndpoint = frame.sourceEndpoint;
+    }
+    if (frame.destinationEndpoint) {
+      response.sourceEndPoint = frame.destinationEndpoint;
+    }
+    if (frame.profileId) {
+      response.profileId = frame.profileId;
+    }
+    if (frame.zdoSeq) {
+      response.zdoSeq = frame.zdoSeq;
+    }
+
+    if (!node) {
+      response.status = ZDP_STATUS.ZDP_DEVICE_NOT_FOUND;
+      if (isIEEE) {
+        response.nwkAddr64 = this.networkAddr64;
+        response.nwkAddr16 = frame.remote16;
+      } else {
+        response.nwkAddr64 = frame.remote64;
+        response.nwkAddr16 = this.networkAddr16;
+      }
+    } else if (frame.requestType === 0) {
+      response.status = ZDP_STATUS.ZDP_SUCCESS;
+      if (isIEEE) {
+        response.nwkAddr64 = node.addr64;
+        response.nwkAddr16 = frame.remote16;
+      } else {
+        response.nwkAddr64 = frame.remote64;
+        response.nwkAddr16 = node.addr16;
+      }
+    } else if (frame.requestType === 1) {
+      response.status = ZDP_STATUS.ZDP_SUCCESS;
+      response.nwkAddr64 = this.networkAddr64;
+      response.nwkAddr16 = this.networkAddr16;
+      let addrList = [];
+      Object.getOwnPropertyNames(this.nodes).forEach((v) => {
+        const n = this.nodes(v);
+        if (n.addr16) {
+          addrList.push(n.addr16);
+        }
+      });
+
+      // FIXME research required to get the correct value - bytes = addresses*2
+      const maxAddr = 40;
+
+      if (frame.startIndex > 0 || addrList.length > maxAddr) {
+        addrList = addrList.slice(frame.startIndex,
+                                  frame.startIndex + maxAddr - 1);
+      }
+      if (addrList.length > 0) {
+        response.startIndex = frame.startIndex;
+        response.numAssocDev = addrList.length;
+        response.assocAddr16 = addrList;
+      }
+    } else {
+      response.status = ZDP_STATUS.ZDP_INV_REQUESTTYPE;
+      if (isIEEE) {
+        response.nwkAddr64 = this.networkAddr64;
+        response.nwkAddr16 = this.networkAddr16;
+      } else {
+        response.nwkAddr64 = frame.remote64;
+        response.nwkAddr16 = this.nodes[frame.remote64].addr16;
+      }
+    }
+
+    // check that the response is somewhat valid
+    if (response.status === -1 || !response.nwkAddr64 || !response.nwkAddr16) {
+      console.error('zb-adapter.js - handle_X_NetworkAddress',
+                    '- programming error - response is invalid');
+      console.error(JSON.stringify(response, null, 2));
+    } else {
+      /* eslint-disable indent */
+// some temporary debugging lines
+response.statusName = ZDP_STATUS[response.status];
+response.clusterIdName = zdo.CLUSTER_ID[response.clusterId];
+console.debug('requested node:', node.addr64, node.addr16);
+console.debug('response:', JSON.stringify(response, null, 2));
+      /* eslint-enable indent */
+
+      this.sendFrameNow(this.zdo.makeFrame(response));
+    }
+  }
 }
 
 ZigbeeAdapter.zdoClusterHandler = {
@@ -1719,6 +1848,10 @@ ZigbeeAdapter.zdoClusterHandler = {
     ZigbeeAdapter.prototype.handlePermitJoinResponse,
   [zdo.CLUSTER_ID.MANAGEMENT_NETWORK_UPDATE_NOTIFY]:
     ZigbeeAdapter.prototype.handleManagementNetUpdate,
+  [zdo.CLUSTER_ID.IEEE_ADDRESS_REQUEST]:
+    ZigbeeAdapter.prototype.handleIEEAddressRequest,
+  [zdo.CLUSTER_ID.NETWORK_ADDRESS_REQUEST]:
+    ZigbeeAdapter.prototype.handleNetworkAddressRequest,
 };
 
 registerFamilies();
